@@ -154,6 +154,8 @@ utils.escapeString = function(value, forLike) {
 
   value = value.replace(/[_%\0\n\r\b\t\\\'\"\x1a]/g, function(s) {
     switch(s) {
+      case "'": return "''";
+      case '"': return '"';
       case "\0": return "\\0";
       case "\n": return "\\n";
       case "\r": return "\\r";
@@ -161,7 +163,8 @@ utils.escapeString = function(value, forLike) {
       case "\t": return "\\t";
       case "\x1a": return "\\Z";
       case "%": return forLike ? "\\%" : "%";
-      case "_": return forLike ? "\\_" : "_";
+      // case "_": return forLike ? "\\_" : "_";
+      case "_": return "_";
       default: return "\\"+s;
     }
   });

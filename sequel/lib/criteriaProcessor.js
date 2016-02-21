@@ -1,5 +1,4 @@
 /**
- * Module dependencies
  */
 
 var _ = require('lodash');
@@ -110,14 +109,8 @@ CriteriaProcessor.prototype.read = function read(options) {
 
   if(options.groupBy) this.group(options.groupBy);
   if(options.sort) this.sort(options.sort);
-  if(hop(options, 'limit')) this.limit(options.limit);
-
-  // Ensure a limit was used if skip was used
-  if(hop(options, 'skip') && !hop(options, 'limit')) {
-    this.limit(null);
-  }
-
   if(hop(options, 'skip')) this.skip(options.skip);
+  if(hop(options, 'limit')) this.limit(options.limit);
 
   return {
     query: this.queryString,
@@ -225,12 +218,7 @@ CriteriaProcessor.prototype.like = function like(val) {
       caseSensitive = false;
     }
 
-    var comparator = self.caseSensitive ? 'ILIKE' : 'LIKE';
-
-    // Override comparator with WL Next features
-    if(hop(self.wlNext, 'caseSensitive') && self.wlNext.caseSensitive) {
-      comparator = 'LIKE';
-    }
+    var comparator = 'LIKE';
 
     self.process(parent, val[parent], comparator, caseSensitive);
     self.queryString += ' AND ';
@@ -349,7 +337,7 @@ CriteriaProcessor.prototype._in = function _in(key, val) {
     }
     else {
       if(_.isString(value)) {
-        value = '"' + utils.escapeString(value) + '"';
+        value = "'" + utils.escapeString(value) + "'";
       }
 
       self.queryString += value + ',';
@@ -466,24 +454,16 @@ CriteriaProcessor.prototype.processSimple = function processSimple (tableName, p
   }
 
   // Check if the value is a DATE and if it's not a date turn it into one
-  if(parentType === 'date' && !_.isDate(value)) {
-    value = new Date(value);
+  if(parentType === 'date' && !_.isDate(obj[key])) {
+    obj[key] = new Date(obj[key]);
   }
 
   if(_.isDate(value)) {
-    var date = value;
-    date = date.getFullYear() + '-' +
-      ('00' + (date.getMonth()+1)).slice(-2) + '-' +
-      ('00' + date.getDate()).slice(-2) + ' ' +
-      ('00' + date.getHours()).slice(-2) + ':' +
-      ('00' + date.getMinutes()).slice(-2) + ':' +
-      ('00' + date.getSeconds()).slice(-2);
-
-    value = date;
+    utils.prepareValue(obj[key]);
   }
 
   if (_.isString(value)) {
-    value = '"' + utils.escapeString(value) +'"';
+    value = "'" + utils.escapeString(value) +"'";
   }
 
   this.queryString += parent + ' ' + combinator + ' ' + value;
@@ -540,20 +520,23 @@ CriteriaProcessor.prototype.processObject = function processObject (tableName, p
 
       // Check if the value is a DATE and if it's not a date turn it into one
       if(parentType === 'date' && !_.isDate(obj[key])) {
-        var date = new Date(obj[key]);
-        date = date.getFullYear() + '-' +
-          ('00' + (date.getMonth()+1)).slice(-2) + '-' +
-          ('00' + date.getDate()).slice(-2) + ' ' +
-          ('00' + date.getHours()).slice(-2) + ':' +
-          ('00' + date.getMinutes()).slice(-2) + ':' +
-          ('00' + date.getSeconds()).slice(-2);
-
-        obj[key] = date;
+        obj[key] = new Date(obj[key]);
+        utils.prepareValue(obj[key]);
       }
 
+      // Check if parent type is a date, and if so cast to timestamp
+      if(parentType === 'date') {
+        self.queryString += (
+          'CAST(' +
+            self.buildParam(self.getTableAlias(), parent, !sensitive && _.isString(obj[key]) && lower) +
+          ' as timestamp) '
+        );
+      }
       // Check if value is a string and if so add LOWER logic
       // to work with case in-sensitive queries
-      self.queryString += self.buildParam(self.getTableAlias(), parent, !sensitive && _.isString(obj[key]) && lower) + ' ';
+      else {
+        self.queryString += self.buildParam(self.getTableAlias(), parent, !sensitive && _.isString(obj[key]) && lower) + ' ';
+      }
       self.prepareCriterion(key, obj[key]);
       self.queryString += ' AND ';
     });
@@ -606,7 +589,7 @@ CriteriaProcessor.prototype.prepareCriterion = function prepareCriterion(key, va
       ('00' + value.getMinutes()).slice(-2) + ':' +
       ('00' + value.getSeconds()).slice(-2);
 
-    value = '"' + value + '"';
+    value = "'" + value + "'";
     escapedDate = true;
   }
 
@@ -621,7 +604,7 @@ CriteriaProcessor.prototype.prepareCriterion = function prepareCriterion(key, va
       }
       else {
         if(_.isString(value) && !escapedDate) {
-          value = '"' + utils.escapeString(value) + '"';
+          value = "'" + utils.escapeString(value) + "'";
         }
         str = '< ' + value;
       }
@@ -637,7 +620,7 @@ CriteriaProcessor.prototype.prepareCriterion = function prepareCriterion(key, va
       }
       else {
         if(_.isString(value) && !escapedDate) {
-          value = '"' + utils.escapeString(value) + '"';
+          value = "'" + utils.escapeString(value) + "'";
         }
         str = '<= ' + value;
       }
@@ -653,7 +636,7 @@ CriteriaProcessor.prototype.prepareCriterion = function prepareCriterion(key, va
       }
       else {
         if(_.isString(value) && !escapedDate) {
-          value = '"' + utils.escapeString(value) + '"';
+          value = "'" + utils.escapeString(value) + "'";
         }
         str = '> ' + value;
       }
@@ -669,7 +652,7 @@ CriteriaProcessor.prototype.prepareCriterion = function prepareCriterion(key, va
       }
       else {
         if(_.isString(value) && !escapedDate) {
-          value = '"' + utils.escapeString(value) + '"';
+          value = "'" + utils.escapeString(value) + "'";
         }
         str = '>= ' + value;
       }
@@ -706,7 +689,7 @@ CriteriaProcessor.prototype.prepareCriterion = function prepareCriterion(key, va
             value.forEach(function(val) {
 
               if(_.isString(val)) {
-                val = '"' + utils.escapeString(val) + '"';
+                val = "'" + utils.escapeString(val) + "'";
               }
 
               str += val + ',';
@@ -724,7 +707,7 @@ CriteriaProcessor.prototype.prepareCriterion = function prepareCriterion(key, va
           }
           else {
             if(_.isString(value)) {
-              value = '"' + utils.escapeString(value) + '"';
+              value = "'" + utils.escapeString(value) + "'";
             }
 
             str = '<> ' + value;
@@ -736,17 +719,7 @@ CriteriaProcessor.prototype.prepareCriterion = function prepareCriterion(key, va
 
     case 'like':
 
-      if(this.caseSensitive) {
-        comparator = 'ILIKE';
-      }
-      else {
-        comparator = 'LIKE';
-      }
-
-      // Override comparator with WL Next features
-      if(hop(self.wlNext, 'caseSensitive') && self.wlNext.caseSensitive) {
-        comparator = 'LIKE';
-      }
+      comparator = 'LIKE';
 
       if(this.parameterized) {
         this.values.push(value);
@@ -754,79 +727,49 @@ CriteriaProcessor.prototype.prepareCriterion = function prepareCriterion(key, va
       }
       else {
         // Note that wildcards are not escaped out of like criterion intentionally
-        str = comparator + ' "' + utils.escapeString(value) + '"';
+        str = comparator + " '" + utils.escapeString(value) + "'";
       }
 
       break;
 
     case 'contains':
 
-      if(this.caseSensitive) {
-        comparator = 'ILIKE';
-      }
-      else {
-        comparator = 'LIKE';
-      }
-
-      // Override comparator with WL Next features
-      if(hop(self.wlNext, 'caseSensitive') && self.wlNext.caseSensitive) {
-        comparator = 'LIKE';
-      }
+      comparator = 'LIKE';
 
       if(this.parameterized) {
         this.values.push('%' + value + '%');
         str = comparator + ' ' + '$' + this.paramCount;
       }
       else {
-        str = comparator + ' "%' + utils.escapeString(value, true) + '%"';
+        str = comparator + " '%" + utils.escapeString(value, true) + "%'";
       }
 
       break;
 
     case 'startsWith':
 
-      if(this.caseSensitive) {
-        comparator = 'ILIKE';
-      }
-      else {
-        comparator = 'LIKE';
-      }
-
-      // Override comparator with WL Next features
-      if(hop(self.wlNext, 'caseSensitive') && self.wlNext.caseSensitive) {
-        comparator = 'LIKE';
-      }
+      comparator = 'LIKE';
 
       if(this.parameterized) {
         this.values.push(value + '%');
         str = comparator + ' ' + '$' + this.paramCount;
       }
       else {
-        str = comparator + ' "' + utils.escapeString(value, true) + '%"';
+        str = comparator + " '" + utils.escapeString(value, true) + "%'";
       }
 
       break;
 
     case 'endsWith':
 
-      if(this.caseSensitive) {
-        comparator = 'ILIKE';
-      }
-      else {
-        comparator = 'LIKE';
-      }
-
-      // Override comparator with WL Next features
-      if(hop(self.wlNext, 'caseSensitive') && self.wlNext.caseSensitive) {
-        comparator = 'LIKE';
-      }
+      comparator = 'LIKE';
 
       if(this.parameterized) {
         this.values.push('%' + value);
         str = comparator + ' ' + '$' + this.paramCount;
       }
       else {
-        str = comparator + ' "%' + utils.escapeString(value, true) + '"';
+        str = comparator + " '%" + utils.escapeString(value, true) + "'";
       }
 
       break;
@@ -846,14 +789,8 @@ CriteriaProcessor.prototype.prepareCriterion = function prepareCriterion(key, va
  */
 
 CriteriaProcessor.prototype.limit = function(options) {
-  // Some MySQL hackery here.  For details, see:
-  // http://stackoverflow.com/questions/255517/mysql-offset-infinite-rows
-  if(options === null || options === undefined) {
-    this.queryString += ' LIMIT 184467440737095516 ';
-  }
-  else {
-    this.queryString += ' LIMIT ' + options;
-  }
+  if(_.isNull(options) || _.isUndefined(options)) return;
+  this.queryString += ' FETCH FIRST ' + options + ' ROWS ONLY';
 };
 
 /**
@@ -861,7 +798,7 @@ CriteriaProcessor.prototype.limit = function(options) {
  */
 
 CriteriaProcessor.prototype.skip = function(options) {
-  this.queryString += ' OFFSET ' + options;
+  this.queryString += ' OFFSET ' + options + ' ROWS';
 };
 
 /**
